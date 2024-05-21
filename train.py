@@ -83,7 +83,7 @@ except ImportError:
     pass
 
 # LoRA and DORA modules
-sys.path.append("./scripts")
+sys.path.append("/home/vishak_bhat/fsdp_qlora/scripts")
 from lora import LORA
 from dora import BNBDORA, HQQDORA, DORALayer, MagnitudeLayer
 
@@ -293,6 +293,10 @@ class InstructionDataset(Dataset):
             sample = self.dataset[index]
             prompt = prompt_template.format_map(sample)
             example = prompt + sample['answer']
+            
+        elif self.style == 'custom':
+            prompt = ""
+            example = self.dataset['text'][index]
         else: # Alpaca
             ann = self.dataset[index]
             if ann.get("input", "") == "":
@@ -329,6 +333,8 @@ def get_dataloader(tokenizer:PreTrainedTokenizerFast, args:Dict):
     from datasets import Dataset, load_dataset
 
     # Load the source dataset
+    if args["dataset"] == "custom":
+        dataset = load_dataset("/home/vishak_bhat/dataset/formatted_Hermis_dataset")['train']
     if args["dataset"] == "alpaca":
         dataset = load_dataset("yahma/alpaca-cleaned")['train']
     elif args["dataset"] == "alpaca_sample":
@@ -360,6 +366,8 @@ def get_dataloader(tokenizer:PreTrainedTokenizerFast, args:Dict):
         dataset = InstructionDataset(dataset, tokenizer, style="qna")
     elif args["dataset"] == "orca_math":
         dataset = InstructionDataset(dataset, tokenizer, style="qna_no_ctx")
+    elif args['dataset'] == "custom":
+        dataset = InstructionDataset(dataset, tokenizer, style="custom")
     else: # (w/ alpaca prompt formatting)
         dataset = InstructionDataset(dataset, tokenizer, style="alpaca")
 
@@ -708,7 +716,7 @@ def fsdp_main(local_rank:int, world_size:int, args:Dict):
                         print("Trainable Llama-Pro layer", n)
                 else:
                     p.requires_grad = False
-    
+        print(model)
         if args["log_to"] == 'wandb':
             logger.log({"memory/allocated_after_model_created": torch.cuda.memory_allocated(local_rank)}, rank)
             logger.log({"memory/reserved_after_model_creation": torch.cuda.memory_reserved(local_rank)}, rank)
@@ -1151,7 +1159,7 @@ def main(
     context_length: int = 512, # Max length of input sequence (in tokens)
     gradient_accumulation_steps: int = 1, # How many steps to accumulate gradients over (increases effective batch size)
     num_epochs: int = 1, # How many epochs of training to do
-    dataset: Param("", choices=["alpaca", "alpaca_sample", "dummy", "guanaco", "sql", "orca_math"]) = "alpaca_sample", # alpaca, alpaca_sample (for a 128-sample test) or "dummy" for 16 long dummy samples
+    dataset: Param("", choices=["alpaca", "alpaca_sample", "dummy", "guanaco", "sql", "orca_math", "custom"]) = "alpaca_sample", # alpaca, alpaca_sample (for a 128-sample test) or "dummy" for 16 long dummy samples
     dataset_samples: int = 512, # Number of samples in an epoch if using "alpaca_sample" or "dummy" dataset
     sharding_strategy: Param("", choices=["full_shard", "shard_grad_op", "ddp", "hybrid_full_shard", "hybrid_shard_grad_op"]) = "full_shard", # Sharding strategy for FSDP
     use_gradient_checkpointing: bool_arg = True, # Use FSDP's activation checkpointing
